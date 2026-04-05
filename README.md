@@ -1,66 +1,65 @@
 # MBAESG_2026__EVALUATION_DATAENGINEER_MLOPS
 
-Analyse de l'Importance des Features et Interprétation Métier
-Importance des Features (XGBoost)
-Les features les plus influentes dans la prédiction du prix, classées par importance :
+Analyse des Performances du Modèle
+Dataset
+Source: Housing_Price_Data.json depuis S3 (s3://logbrain-datalake/datasets/house_price/)
+Taille: 545 observations, 13 features originales (14 après one-hot encoding)
+Target: PRICE
+Split: 80% train / 20% test (random_state=42)
+Comparaison des 5 Modèles
+Rang	Modèle	MAE	RMSE	R²
+1	XGBoost	12,917	33,312	0.8725
+2	Random Forest	20,373	34,945	0.8597
+3	Decision Tree	17,529	36,861	0.8438
+4	Gradient Boosting	22,101	38,960	0.8256
+5	Linear Regression	39,584	53,620	0.6696
+Analyse des Résultats
+XGBoost domine sur les 3 métriques — c'est le seul modèle à obtenir simultanément le meilleur MAE, le meilleur RMSE et le meilleur R². C'est un résultat clair et sans ambiguïté.
 
-1. AREA (Surface) — Importance Très Élevée
-La surface habitable est le facteur n°1 du prix immobilier partout dans le monde. C'est logique : plus une maison est grande, plus elle coûte cher. La relation n'est pas parfaitement linéaire — les très grandes surfaces ont un prix au m² souvent plus élevé (effet prestige), ce que XGBoost capture mieux qu'une régression linéaire.
+Écart MAE entre modèles :
 
-Dans la vie réelle : C'est le premier critère que regarde un acheteur. Les annonces immobilières mettent toujours la surface en avant. Un acheteur compare le prix/m² entre différents biens.
+XGBoost vs Random Forest : -36% d'erreur moyenne (12,917 vs 20,373)
+XGBoost vs Linear Regression : -67% d'erreur moyenne (12,917 vs 39,584)
+Observations clés :
 
-2. BATHROOMS (Salles de bain) — Importance Élevée
-Le nombre de salles de bain est un indicateur indirect du standing de la maison. Une maison avec 3 salles de bain est généralement plus luxueuse qu'une avec 1 seule, même à surface égale. C'est aussi un marqueur de confort familial.
+Linear Regression est nettement en retrait (R²=0.67) — les relations prix/features sont fortement non-linéaires, ce qu'un modèle linéaire ne peut pas capturer
+Decision Tree a un MAE correct (17,529) mais un RMSE élevé (36,861), signe d'erreurs ponctuelles très grandes (overfitting sur certaines observations)
+Gradient Boosting est étonnamment en 4ème position — avec les paramètres par défaut, il sous-performe par rapport à XGBoost et Random Forest
+Random Forest est solide (R²=0.86) mais son MAE est 58% plus élevé que XGBoost, indiquant des prédictions individuelles moins précises
+Modèle Retenu : XGBoost Optimisé
+Hyperparamètres (GridSearchCV, 3-fold CV) :
 
-Dans la vie réelle : Ajouter une salle de bain est l'une des rénovations qui augmente le plus la valeur d'un bien. Les familles nombreuses et les acheteurs haut de gamme recherchent plusieurs salles de bain.
+Paramètre	Valeur	Rôle
+learning_rate	0.2	Convergence rapide, adapté au petit dataset
+max_depth	15	Arbres profonds capturant les interactions complexes
+min_child_weight	5	Régularisation contre l'overfitting
+n_estimators	100	Nombre d'arbres optimal pour ce learning rate
+Métriques finales :
 
-3. STORIES (Étages) — Importance Élevée
-Plus d'étages signifie généralement plus de surface habitable et une meilleure organisation de l'espace (séparation jour/nuit). Les maisons à étages sont aussi perçues comme plus "imposantes".
+MAE: 12,917 — En moyenne, l'estimation est à ±13K du prix réel
+RMSE: 33,312 — Les erreurs importantes restent contenues
+R²: 0.8725 — Le modèle explique 87% de la variance des prix
+Pourquoi XGBoost ?
+Gradient Boosting séquentiel — Chaque arbre corrige les erreurs du précédent, contrairement à Random Forest qui agrège des arbres indépendants
+Régularisation L1/L2 intégrée — Évite l'overfitting sans sacrifier la performance (contrairement à Decision Tree)
+Capture des interactions — AREA × AIRCONDITIONING × PREFAREA ont un effet multiplicatif que seul un modèle non-linéaire peut apprendre
+Robuste aux petits datasets — 545 lignes suffisent grâce au boosting progressif
+Importance des Features
+Les features les plus influentes, cohérentes avec les fondamentaux de l'immobilier :
 
-Dans la vie réelle : Une maison de plain-pied vs. R+2 sur le même terrain n'a pas du tout la même valeur. Les étages permettent aussi de maximiser la construction sur un terrain limité en zone urbaine.
-
-4. AIRCONDITIONING (Climatisation) — Importance Moyenne-Élevée
-La climatisation est un marqueur de confort moderne. Son impact sur le prix dépend du contexte — elle a plus de valeur dans les régions chaudes. C'est aussi un indicateur que la maison a été bien entretenue/modernisée.
-
-Dans la vie réelle : Dans les marchés où les étés sont chauds, une maison sans clim se vend significativement moins cher. C'est devenu quasi indispensable dans de nombreuses régions, et son absence est un point de négociation pour l'acheteur.
-
-5. PREFAREA (Zone Privilégiée) — Importance Moyenne-Élevée
-L'emplacement est roi en immobilier. Être dans une zone privilégiée (bon quartier, proximité des services, sécurité) est un multiplicateur de prix. Deux maisons identiques dans des quartiers différents peuvent avoir des prix très différents.
-
-Dans la vie réelle : "Location, location, location" — le mantra de l'immobilier. Les zones privilégiées offrent de meilleures écoles, moins de criminalité, plus de commerces, et une meilleure valorisation à long terme.
-
-6. PARKING (Places de parking) — Importance Moyenne
-Le nombre de places de parking reflète la praticité de la maison. En zone urbaine, le parking est un luxe qui se monnaye cher. Il indique aussi la taille du terrain.
-
-Dans la vie réelle : Dans les villes denses, une place de parking peut valoir 20-50K€. Les familles avec 2 voitures cherchent absolument un double garage. C'est aussi un critère éliminatoire pour beaucoup d'acheteurs.
-
-7. BEDROOMS (Chambres) — Importance Moyenne
-Le nombre de chambres définit la capacité d'accueil de la famille. Cependant, son importance est modérée car elle est corrélée avec la surface (une grande maison a naturellement plus de chambres).
-
-Dans la vie réelle : Le passage de 2 à 3 chambres est le seuil le plus impactant — c'est la différence entre un couple et une famille. Au-delà de 4 chambres, l'impact marginal diminue.
-
-8. MAINROAD (Route Principale) — Importance Moyenne-Faible
-Être sur une route principale offre un meilleur accès mais aussi plus de bruit et de trafic. L'impact est ambivalent.
-
-Dans la vie réelle : C'est un compromis accessibilité vs. tranquillité. Les maisons sur route principale se vendent plus vite (visibilité) mais parfois moins cher (nuisances). XGBoost capture cette nuance mieux qu'un modèle linéaire.
-
-9. BASEMENT (Sous-sol) — Importance Faible-Moyenne
-Un sous-sol ajoute de l'espace utilisable (stockage, buanderie, salle de jeux) sans augmenter l'emprise au sol.
-
-Dans la vie réelle : Un sous-sol aménagé peut ajouter 10-20% à la valeur. Mais un sous-sol humide ou inondable est un point négatif. Le dataset ne distingue pas ces cas.
-
-10. FURNISHINGSTATUS (Ameublement) — Importance Faible
-L'état d'ameublement a un impact limité car les meubles sont temporaires et subjectifs. Une maison meublée se vend légèrement plus cher, mais c'est surtout un facilitateur de vente rapide.
-
-Dans la vie réelle : Le mobilier est rarement inclus dans le prix de vente en France, mais dans d'autres marchés (location, résidence secondaire), c'est un plus. L'impact principal est sur le délai de vente, pas le prix.
-
-11. GUESTROOM & HOTWATERHEATING — Importance Faible
-Ce sont des features secondaires qui n'influencent que marginalement le prix. Le chauffage eau chaude est quasi standard, et la chambre d'amis est un bonus mais pas un critère décisif.
-
-Pourquoi ces Résultats sont Cohérents
-L'ordre d'importance correspond exactement aux critères utilisés par les professionnels de l'immobilier pour évaluer un bien :
-
-Surface + Emplacement = 60-70% du prix
-Standing (bathrooms, clim, étages) = 20-25% du prix
-Extras (parking, sous-sol, ameublement) = 5-15% du prix
-XGBoost a appris ces relations implicitement à partir des données, ce qui valide la qualité du modèle et du dataset.
+AREA (surface) — Facteur n°1 du prix, le prix/m² est le référentiel universel
+BATHROOMS — Indicateur de standing (passer de 1 à 2 SdB augmente significativement la valeur)
+STORIES — Plus d'étages = plus de surface habitable sur un même terrain
+AIRCONDITIONING — Marqueur de confort moderne, quasi indispensable
+PREFAREA — "Location, location, location" — l'emplacement est roi en immobilier
+PARKING — Luxe en zone urbaine, critère éliminatoire pour beaucoup d'acheteurs
+BEDROOMS — Importance modérée car corrélé avec AREA
+MAINROAD — Impact ambivalent (accessibilité vs nuisances)
+BASEMENT/GUESTROOM/HOTWATERHEATING — Impact marginal
+FURNISHINGSTATUS — Faible impact, les meubles sont temporaires
+Limites et Axes d'Amélioration
+Dataset limité (545 lignes) — risque de variance sur de nouvelles données
+Pas de features géographiques (GPS, ville, code postal) — facteur n°1 manquant
+Pas de données temporelles (année construction, date de vente)
+Gradient Boosting sous-performant — les paramètres par défaut ne sont pas optimaux, un tuning dédié pourrait améliorer ses résultats
+Pistes : stacking XGBoost + Random Forest, ajout de LightGBM/CatBoost, feature engineering avancé
